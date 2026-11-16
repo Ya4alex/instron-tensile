@@ -87,6 +87,19 @@ export function PlotCard({
     }
   };
 
+  // Esc закрывает подробный просмотр / выходит из редактирования
+  useEffect(() => {
+    if (!zoomed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      if (editMode) setEditMode(false);
+      else setZoomed(false);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [zoomed, editMode]);
+
   // редактируемые графики открываются сразу в режиме редактирования
   const open = () => {
     setEditMode(!!editor);

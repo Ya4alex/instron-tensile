@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { CalcOptions, SpecimenRow } from '../core/types';
 import { buildCsvText, exportCsv } from './ResultsTable';
 import { buildXlsx } from '../core/xlsx';
@@ -20,6 +20,14 @@ export function ExportDialog({
   const [params, setParams] = useState(true);
   const [perSpec, setPerSpec] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !busy) onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [busy, onClose]);
 
   const ok = (summary || perSpec) && !busy;
   const date = new Date().toISOString().slice(0, 10);
