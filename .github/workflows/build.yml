@@ -1,0 +1,66 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Test
+        working-directory: app
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npx vitest run
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # для релизов по тегам
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Frontend (single-file)
+        working-directory: app
+        run: |
+          npm ci
+          npx vite build
+      - name: Launchers (linux + windows)
+        working-directory: launcher
+        run: |
+          gzip -c -9 ../app/dist/index.html > app.html.gz
+          go build -ldflags="-s -w" -o instron-lab .
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H windowsgui" -o instron-lab.exe .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: instron-lab-${{ github.sha }}
+          path: |
+            launcher/instron-lab
+            launcher/instron-lab.exe
+            app/dist/index.html
+      - name: Release (по тегу v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            launcher/instron-lab
+            launcher/instron-lab.exe
+            app/dist/index.html

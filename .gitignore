@@ -1,0 +1,6 @@
+node_modules/
+app/dist/
+launcher/app.html.gz
+launcher/instron-lab
+launcher/instron-lab.exe
+dev/
