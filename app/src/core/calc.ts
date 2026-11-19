@@ -2,7 +2,7 @@ import type { CalcOptions, CalcResult, Specimen } from './types';
 
 export const DEFAULT_OPTS: CalcOptions = {
   trimK: 0.005, tailK: 0.25, r2Min: 0.99, winFrac: 0.1, slopeFrac: 0.7,
-  algo: 'first', epsSec0: 0.0005, epsSec1: 0.0025,
+  algo: 'steepest', epsSec0: 0.0005, epsSec1: 0.0025,
 };
 
 /** Максимум массива циклом — спред Math.max(...xs) падает на >~100 тыс. точек */

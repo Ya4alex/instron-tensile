@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Specimen, CalcOptions, RegionAlgo } from './core/types';
 import { parseSpecimenCsv, parseResultsCsv, isResultsCsv } from './core/parse';
 import { compute, DEFAULT_OPTS, applyManualRegion, applyManualTrim } from './core/calc';
@@ -64,13 +64,30 @@ export default function App() {
     setErrors((prev) => [...prev, ...errs]);
   };
 
+  // пересчёт всех образцов и перерисовка графиков тяжёлые — применяем
+  // параметры с дебаунсом, чтобы ввод чисел не фризил интерфейс
+  const [optsD, setOptsD] = useState(opts);
+  useEffect(() => {
+    const t = setTimeout(() => setOptsD(opts), 400);
+    return () => clearTimeout(t);
+  }, [opts]);
+
+  // поповер параметров не модальный: графики остаются кликабельными,
+  // закрывается по ⚙ / Esc
+  useEffect(() => {
+    if (!optsOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOptsOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [optsOpen]);
+
   const rows = useMemo<Row[]>(
     () =>
       specimens
         .map((s) => {
           try {
             const tm = manualTrim.get(s.id);
-            let r = tm ? applyManualTrim(s, opts, tm.i0, tm.i1) : compute(s, opts);
+            let r = tm ? applyManualTrim(s, optsD, tm.i0, tm.i1) : compute(s, optsD);
             const m = manual.get(s.id);
             if (m) r = applyManualRegion(r, m.eps0, m.eps1);
             return { s, r };
@@ -79,7 +96,7 @@ export default function App() {
           }
         })
         .filter((x): x is Row => x !== null),
-    [specimens, opts, manual, manualTrim],
+    [specimens, optsD, manual, manualTrim],
   );
 
   const setManual = (id: string, v: { eps0: number; eps1: number } | null) =>
@@ -173,9 +190,9 @@ export default function App() {
             {errors.length > 0 && ` · ${errors.length} ош.`}
           </span>
           <DropZone compact onFiles={addFiles} />
-          <label className="mid-toggle" title="Показывать графики 2–3: N(Δl) после обрезки и σ(ε)">
+          <label className="mid-toggle" title="N(Δl) после обрезки и σ(ε) — нужны для проверки, не для фильтрации">
             <input type="checkbox" checked={showMid} onChange={(e) => setShowMid(e.target.checked)} />
-            промежуточные
+            графики 2–3
           </label>
           <button
             onClick={async () => {
@@ -201,9 +218,8 @@ export default function App() {
           <span className="opt-wrap">
             <button onClick={() => setOptsOpen((o) => !o)} title="Параметры обработки">⚙</button>
             {optsOpen && (
-              <>
-                <div className="pop-overlay" onClick={() => setOptsOpen(false)} />
-                <div className="opt-pop">
+              <div className="opt-pop">
+                <div className="opt-group">Линейный участок</div>
                 <div className="opt-row">
                   <label className="opt">
                     Алгоритм
@@ -211,8 +227,8 @@ export default function App() {
                       value={opts.algo}
                       onChange={(e) => setOpts((o) => ({ ...o, algo: e.target.value as RegionAlgo }))}
                     >
-                      <option value="first">Первый участок</option>
                       <option value="steepest">Самый крутой</option>
+                      <option value="first">Первый участок</option>
                       <option value="secant">Секущая ε₁→ε₂</option>
                     </select>
                   </label>
@@ -251,13 +267,20 @@ export default function App() {
                     <div className="opt-hint">границы деформации для секущей; ищутся ближайшие точки ряда</div>
                   </div>
                 )}
+                {opts.algo !== 'secant' && (
+                  <>
+                    {numInput('r2Min', '0.005', 'R² участка', 'требуемая линейность участка: выше — строже и короче')}
+                    {numInput('winFrac', '0.01', 'Мин. окно', 'масштаб окна оценки начального наклона (доля предпиковых точек)')}
+                    {numInput('slopeFrac', '0.05', 'Спад наклона', 'участок обрывается при падении наклона ниже доли от упругого; ↑ если захватывает следующий участок, ↓ если режет рано')}
+                  </>
+                )}
+                <div className="opt-group">Обрезка данных</div>
                 {numInput('trimK', '0.001', 'Порог начала', 'обрезка начала: точки с N < доли от N_max отсекаются (мёртвая зона, дребезг датчика)')}
                 {numInput('tailK', '0.05', 'Порог хвоста', 'обрезка хвоста после разрыва: отсекается, пока сила ниже доли от пиковой')}
-                {numInput('r2Min', '0.005', 'R² участка', 'требуемая линейность участка: выше — строже и короче', opts.algo === 'secant')}
-                {numInput('winFrac', '0.01', 'Мин. окно', 'масштаб окна оценки начального наклона (доля предпиковых точек)', opts.algo === 'secant')}
-                {numInput('slopeFrac', '0.05', 'Спад наклона', 'участок обрывается при падении наклона ниже доли от упругого; ↑ если захватывает следующий участок, ↓ если режет рано', opts.algo === 'secant')}
-                </div>
-              </>
+                <button className="opt-reset" onClick={() => setOpts(DEFAULT_OPTS)}>
+                  Сбросить по умолчаниям
+                </button>
+              </div>
             )}
           </span>
           <button
@@ -285,7 +308,7 @@ export default function App() {
               flashId={flashId}
               onManual={setManual}
               onManualTrim={setManualTrim}
-              opts={opts}
+              opts={optsD}
               showMid={showMid}
             />
           </div>
@@ -315,7 +338,7 @@ export default function App() {
         <p className="empty error-cell">{errors.length} файл(ов) не удалось прочитать</p>
       )}
       {exportOpen && (
-        <ExportDialog rows={activeRows} opts={opts} onClose={() => setExportOpen(false)} />
+        <ExportDialog rows={activeRows} opts={optsD} onClose={() => setExportOpen(false)} />
       )}
     </div>
   );

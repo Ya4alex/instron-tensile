@@ -23,7 +23,10 @@ h2 { font-size: 15px; margin: 14px 0 8px; }
 .island .counts { font-size: 12px; color: #456; padding: 0 6px; border-right: 1px solid #e4e8ee; }
 .island .dz-compact button { padding: 4px 8px; }
 .opt-wrap { position: relative; }
-.pop-overlay { position: fixed; inset: 0; z-index: 65; }
+.opt-group { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: #7a8694; margin: 8px 0 4px; }
+.opt-group:first-child { margin-top: 0; }
+.opt-reset { width: 100%; margin-top: 10px; padding: 5px; font-size: 12px; color: #456; background: #f4f6f8; border: 1px solid #dde3e9; border-radius: 6px; cursor: pointer; }
+.opt-reset:hover { background: #e9edf2; }
 .opt-pop {
   position: absolute; top: calc(100% + 8px); right: 0; z-index: 70;
   background: #fff; border: 1px solid #dde2ea; border-radius: 10px;

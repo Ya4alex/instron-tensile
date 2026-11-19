@@ -93,11 +93,9 @@ export function ResultsTable({
   const active = rows.filter((r) => !excluded.has(r.s.id));
   const stat = (fn: (xs: number[]) => number) =>
     COLS.map((c) => fn(active.map((r) => c.get(r))));
-
-  const statRows: { name: string; vals: number[]; render: (c: Col, v: number) => string }[] = [
-    { name: 'Среднее', vals: stat(mean), render: (c, v) => (c.isPct ? pct(v) : fmt(v, c.d)) },
-    { name: 'СКО', vals: stat(std), render: (c, v) => (c.isPct ? pct(v) : fmt(v, c.d)) },
-  ];
+  const render = (c: Col, v: number) => (c.isPct ? pct(v) : fmt(v, c.d));
+  const means = stat(mean);
+  const stds = stat(std);
 
   const arrow = (key: string) => (sort?.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : '');
 
@@ -168,27 +166,14 @@ export function ResultsTable({
         </tbody>
         {active.length > 0 && (
           <tfoot>
-            {statRows.map((sr) => (
-              <tr key={sr.name} className="stat-row">
-                <td />
-                <td colSpan={2}><b>{sr.name}</b></td>
-                {sr.vals.map((v, i) => (
-                  <td key={i} className="num"><b>{sr.render(COLS[i], v)}</b></td>
-                ))}
-                <td />
-              </tr>
-            ))}
             <tr className="stat-row">
               <td />
               <td colSpan={2}><b>X̄ ± 2σ</b></td>
-              {statRows[0].vals.map((m, i) => {
-                const s2 = statRows[1].vals[i];
-                return (
-                  <td key={i} className="num">
-                    <b>{statRows[0].render(COLS[i], m)} ± {statRows[1].render(COLS[i], 2 * s2)}</b>
-                  </td>
-                );
-              })}
+              {means.map((m, i) => (
+                <td key={i} className="num">
+                  <b>{render(COLS[i], m)} ± {render(COLS[i], 2 * stds[i])}</b>
+                </td>
+              ))}
               <td />
             </tr>
           </tfoot>
