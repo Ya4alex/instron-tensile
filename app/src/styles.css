@@ -95,10 +95,7 @@ th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { background: #e3eaf4; }
 tbody tr:nth-child(even) td { background: #fafbfc; }
 tbody tr:hover td { background: #f0f4fa; }
-tfoot td { position: sticky; background: #eef2f8 !important; border-top: 2px solid #dde3ec; padding-top: 2px; padding-bottom: 2px; }
-tfoot tr:nth-child(1) td { bottom: 44px; }
-tfoot tr:nth-child(2) td { bottom: 22px; }
-tfoot tr:nth-child(3) td { bottom: 0; }
+tfoot td { position: sticky; bottom: 0; background: #eef2f8 !important; border-top: 2px solid #dde3ec; padding-top: 2px; padding-bottom: 2px; }
 td.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.fname { max-width: 200px; overflow: hidden; text-overflow: ellipsis; color: #567; }
 .label-input { width: 110px; font: inherit; padding: 2px 6px; border: 1px solid transparent; border-radius: 4px; background: transparent; }
