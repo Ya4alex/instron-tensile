@@ -99,7 +99,7 @@ export function ExportDialog({
           <label>
             <input type="checkbox" checked={perSpec} onChange={(e) => setPerSpec(e.target.checked)} />
             Таблицы по образцам
-            <span className="hint">{format === 'xlsx' ? 'лист на каждый образец' : 'ZIP с CSV по каждому образцу'}</span>
+            <span className="hint">{format === 'xlsx' ? 'лист на образец: сырые точки + обрезанные + ε/σ' : 'ZIP с CSV по каждому образцу'}</span>
           </label>
         </div>
         <div className="exp-actions">

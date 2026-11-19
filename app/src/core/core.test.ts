@@ -240,6 +240,12 @@ describe('матчасть — сверка на всех образцах', () 
     }
   });
 
+  const mkSyn = (dl: number[], n: number[]) => ({
+    id: 'syn', fileName: 'syn.csv', label: 'syn', index: null,
+    geometry: { l0: 100, b0: 10, hcp: 1 }, meta: {}, declaredMaxLoad: null,
+    series: { t: dl.map((_, i) => i * 0.01), dl, n },
+  });
+
   it('ALG-2 берёт ПЕРВЫЙ линейный участок, а не длинное плато', () => {
     // билинейная кривая: крутой упругий участок (E≈2000, ~10 точек),
     // затем длинное пологое плато (E≈20, ~290 точек) — старый критерий
@@ -251,15 +257,44 @@ describe('матчасть — сверка на всех образцах', () 
       dl.push(d);
       n.push(d < 0.1 ? 200 * d : 20 + 2 * (d - 0.1));
     }
-    const syn = {
-      id: 'syn', fileName: 'syn.csv', label: 'syn', index: null,
-      geometry: { l0: 100, b0: 10, hcp: 1 }, meta: {}, declaredMaxLoad: null,
-      series: { t: dl.map((_, i) => i * 0.01), dl, n },
-    };
-    const r = compute(syn, { ...DEFAULT_OPTS, tailK: 0.99 });
+    const r = compute(mkSyn(dl, n), { ...DEFAULT_OPTS, tailK: 0.99 });
     // участок заканчивается в районе перегиба (ε≈0.001), а не на плато (ε→0.03)
     expect(r.eps[r.region.i1]).toBeLessThan(0.005);
     expect(r.eTan).toBeGreaterThan(1000); // модуль упругого участка, не плато
+  });
+
+  it('algo=steepest: находит крутой участок за toe-зоной', () => {
+    // пологий старт («распрямление», E≈20), затем крутой упругий участок
+    // (E≈2000), затем плато — 'first' споткнётся о toe, 'steepest' — нет
+    const dl: number[] = [];
+    const n: number[] = [];
+    for (let i = 0; i <= 300; i++) {
+      const d = (i / 300) * 3;
+      dl.push(d);
+      if (d < 0.5) n.push(2 * d); // toe: σ-наклон 20
+      else if (d < 0.6) n.push(1 + 200 * (d - 0.5)); // упругий: наклон 2000
+      else n.push(21 + 2 * (d - 0.6)); // плато
+    }
+    const r = compute(mkSyn(dl, n), { ...DEFAULT_OPTS, tailK: 0.99, algo: 'steepest' });
+    expect(r.eTan).toBeGreaterThan(1000);
+    expect(r.dl[r.region.i0]).toBeGreaterThan(0.3); // участок начинается за toe
+  });
+
+  it('algo=secant: хорда между заданными деформациями (ISO 527)', () => {
+    const dl: number[] = [];
+    const n: number[] = [];
+    for (let i = 0; i <= 300; i++) {
+      const d = (i / 300) * 3;
+      dl.push(d);
+      n.push(d < 0.1 ? 200 * d : 20 + 2 * (d - 0.1));
+    }
+    // обе границы внутри упругого участка → E_sec = наклон участка
+    const r = compute(mkSyn(dl, n), {
+      ...DEFAULT_OPTS, tailK: 0.99, algo: 'secant', epsSec0: 0.0002, epsSec1: 0.0008,
+    });
+    expect(r.eps[r.region.i0]).toBeCloseTo(0.0002, 4);
+    expect(r.eps[r.region.i1]).toBeCloseTo(0.0008, 4);
+    expect(r.eTan).toBeCloseTo(2000, 0);
   });
 
   it('секущие = σ/ε в точках границ (с пропуском ε=0)', () => {

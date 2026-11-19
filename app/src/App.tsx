@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import type { Specimen, CalcOptions } from './core/types';
+import type { Specimen, CalcOptions, RegionAlgo } from './core/types';
 import { parseSpecimenCsv, parseResultsCsv, isResultsCsv } from './core/parse';
 import { compute, DEFAULT_OPTS, applyManualRegion, applyManualTrim } from './core/calc';
 import { exportAllFigures } from './core/figures';
@@ -130,21 +130,31 @@ export default function App() {
     window.addEventListener('mouseup', up);
   };
 
-  const optInput = (key: keyof CalcOptions, step: string, title: string) => (
-    <label className="opt" key={key}>
-      {title}
-      <input
-        type="number"
-        step={step}
-        min="0"
-        value={opts[key]}
-        onChange={(e) => {
-          const v = parseFloat(e.target.value.replace(',', '.'));
-          if (Number.isFinite(v)) setOpts((o) => ({ ...o, [key]: v }));
-        }}
-      />
-    </label>
+  const numInput = (key: keyof CalcOptions, step: string, title: string, hint: string, disabled = false) => (
+    <div className="opt-row" key={key}>
+      <label className="opt">
+        {title}
+        <input
+          type="number"
+          step={step}
+          min="0"
+          value={opts[key]}
+          disabled={disabled}
+          onChange={(e) => {
+            const v = parseFloat(e.target.value.replace(',', '.'));
+            if (Number.isFinite(v)) setOpts((o) => ({ ...o, [key]: v }));
+          }}
+        />
+      </label>
+      <div className="opt-hint">{hint}</div>
+    </div>
   );
+
+  const ALGO_HINTS: Record<RegionAlgo, string> = {
+    first: 'первый линейный участок от начала кривой — стандартный случай, упругая зона всегда самая крутая',
+    steepest: 'самый крутой линейный отрезок до пика — при длинной toe-зоне («распрямление» в начале)',
+    secant: 'модуль как хорда между ε₁ и ε₂ — для J-образных кривых без прямого участка (ISO 527: 0,05–0,25%)',
+  };
 
   const loaded = specimens.length > 0;
 
@@ -194,11 +204,58 @@ export default function App() {
               <>
                 <div className="pop-overlay" onClick={() => setOptsOpen(false)} />
                 <div className="opt-pop">
-                {optInput('trimK', '0.001', 'Порог начала')}
-                {optInput('tailK', '0.05', 'Порог хвоста')}
-                {optInput('r2Min', '0.005', 'R² участка')}
-                {optInput('winFrac', '0.01', 'Мин. окно')}
-                {optInput('slopeFrac', '0.05', 'Спад наклона')}
+                <div className="opt-row">
+                  <label className="opt">
+                    Алгоритм
+                    <select
+                      value={opts.algo}
+                      onChange={(e) => setOpts((o) => ({ ...o, algo: e.target.value as RegionAlgo }))}
+                    >
+                      <option value="first">Первый участок</option>
+                      <option value="steepest">Самый крутой</option>
+                      <option value="secant">Секущая ε₁→ε₂</option>
+                    </select>
+                  </label>
+                  <div className="opt-hint">{ALGO_HINTS[opts.algo]}</div>
+                </div>
+                {opts.algo === 'secant' && (
+                  <div className="opt-row">
+                    <div className="opt-pair">
+                      <label className="opt">
+                        ε₁, %
+                        <input
+                          type="number"
+                          step="0.05"
+                          min="0"
+                          value={opts.epsSec0 * 100}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value.replace(',', '.'));
+                            if (Number.isFinite(v)) setOpts((o) => ({ ...o, epsSec0: v / 100 }));
+                          }}
+                        />
+                      </label>
+                      <label className="opt">
+                        ε₂, %
+                        <input
+                          type="number"
+                          step="0.05"
+                          min="0"
+                          value={opts.epsSec1 * 100}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value.replace(',', '.'));
+                            if (Number.isFinite(v)) setOpts((o) => ({ ...o, epsSec1: v / 100 }));
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <div className="opt-hint">границы деформации для секущей; ищутся ближайшие точки ряда</div>
+                  </div>
+                )}
+                {numInput('trimK', '0.001', 'Порог начала', 'обрезка начала: точки с N < доли от N_max отсекаются (мёртвая зона, дребезг датчика)')}
+                {numInput('tailK', '0.05', 'Порог хвоста', 'обрезка хвоста после разрыва: отсекается, пока сила ниже доли от пиковой')}
+                {numInput('r2Min', '0.005', 'R² участка', 'требуемая линейность участка: выше — строже и короче', opts.algo === 'secant')}
+                {numInput('winFrac', '0.01', 'Мин. окно', 'масштаб окна оценки начального наклона (доля предпиковых точек)', opts.algo === 'secant')}
+                {numInput('slopeFrac', '0.05', 'Спад наклона', 'участок обрывается при падении наклона ниже доли от упругого; ↑ если захватывает следующий участок, ↓ если режет рано', opts.algo === 'secant')}
                 </div>
               </>
             )}

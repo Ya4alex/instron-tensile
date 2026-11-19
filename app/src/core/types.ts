@@ -55,4 +55,9 @@ export interface CalcOptions {
   r2Min: number; // минимальный R² линейного участка (0.99)
   winFrac: number; // доля точек для мин. окна (0.10)
   slopeFrac: number; // допустимый спад наклона от начального максимума (0.70)
+  algo: RegionAlgo; // алгоритм поиска линейного участка ('first')
+  epsSec0: number; // ε начала секущего участка, отн. ед. (0.0005 — как в ISO 527)
+  epsSec1: number; // ε конца секущего участка, отн. ед. (0.0025)
 }
+
+export type RegionAlgo = 'first' | 'steepest' | 'secant';

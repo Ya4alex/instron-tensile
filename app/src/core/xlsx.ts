@@ -92,6 +92,10 @@ export async function buildXlsx(
       ws.addRow(['Мин. R² линейного участка', opts.r2Min]);
       ws.addRow(['Мин. окно участка (доля точек)', opts.winFrac]);
       ws.addRow(['Допустимый спад наклона участка', opts.slopeFrac]);
+      const algoName = { first: 'первый участок', steepest: 'самый крутой участок', secant: 'секущая ε₁→ε₂' }[opts.algo];
+      ws.addRow(['Алгоритм поиска участка', algoName]);
+      if (opts.algo === 'secant')
+        ws.addRow(['Границы секущей ε, %', `${(opts.epsSec0 * 100).toFixed(3)} – ${(opts.epsSec1 * 100).toFixed(3)}`]);
       ws.addRow(['Образцов в выгрузке', rows.length]);
     }
   }

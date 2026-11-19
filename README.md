@@ -6,10 +6,13 @@
 
 - расчёт по методичке: ε, σ, σ_max, ε_max, ε@σ_max, E_тан, E_сек1/2,
   среднее и СКО по серии;
+- три алгоритма поиска модуля: первый линейный участок, самый крутой
+  участок (toe-зоны) и секущая по диапазону ε (ISO 527);
 - графики по каждому образцу и сводные, подробный просмотр с зумом;
 - ручная коррекция обрезки данных и линейного участка;
 - исключение образцов из обработки одним кликом;
-- экспорт таблиц (CSV / XLSX) и графиков для публикаций (SVG / PNG 600 dpi / ZIP).
+- экспорт таблиц (CSV / XLSX, включая точечные данные ε–σ по образцам)
+  и графиков для публикаций (SVG / PNG 600 dpi / ZIP).
 
 Вся логика выполняется в браузере — сервер, Python и установка
 зависимостей на рабочей машине не требуются.
@@ -41,15 +44,43 @@ build.ps1      то же под Windows
 
 ## Сборка
 
-Требования: Node.js ≥ 18, Go ≥ 1.21 (только для лаунчера).
+Требования: Node.js ≥ 18; Go ≥ 1.21 — только для лаунчера.
+
+### Всё сразу (Linux/macOS)
 
 ```bash
-./build.sh        # фронт + launcher/instron-lab + launcher/instron-lab.exe
-.\build.ps1       # Windows: фронт + launcher\instron-lab.exe
+./build.sh
 ```
 
-Только фронт: `cd app && npm ci && npx vite build` → `app/dist/index.html`
-(один самодостаточный файл, открывается в браузере).
+Собирает фронт → `app/dist/index.html`, жмёт его в `launcher/app.html.gz`
+и компилирует оба бинаря: `launcher/instron-lab` (Linux) и
+`launcher/instron-lab.exe` (Windows, кросс-компиляция — Windows не нужен).
+
+### Windows
+
+```powershell
+.\build.ps1    # фронт + launcher\instron-lab.exe
+```
+
+### По частям
+
+```bash
+# только фронт → app/dist/index.html (single-file, работает без лаунчера)
+cd app && npm ci && npx vite build
+
+# только лаунчер (нужен собранный app.html.gz)
+cd app/dist && gzip -9 -k -f index.html && mv index.html.gz ../../launcher/app.html.gz && cd ../..
+cd launcher && go build -o instron-lab .                        # linux
+cd launcher && GOOS=windows GOARCH=amd64 go build -o instron-lab.exe .
+```
+
+`app.html.gz` вшит в бинарь через `go:embed` — обязательно соберите его
+перед `go build`, иначе лаунчер не скомпилируется.
+
+### CI
+
+GitHub Actions (`.github/workflows/build.yml`) при пуше прогоняет тесты,
+собирает артефакты и прикрепляет их к релизу по тегу `v*`.
 
 ## Разработка
 
@@ -57,7 +88,7 @@ build.ps1      то же под Windows
 cd app
 npm ci
 npm run dev        # dev-сервер на :5173
-npx vitest run     # 27 тестов: парсер, расчёты (сверка с реальными данными), xlsx
+npx vitest run     # 30 тестов: парсер, расчёты (сверка с реальными данными), xlsx
 npx tsc --noEmit   # проверка типов
 ```
 

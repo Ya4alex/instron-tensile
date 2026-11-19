@@ -1,6 +1,9 @@
 import type { CalcOptions, CalcResult, Specimen } from './types';
 
-export const DEFAULT_OPTS: CalcOptions = { trimK: 0.005, tailK: 0.25, r2Min: 0.99, winFrac: 0.1, slopeFrac: 0.7 };
+export const DEFAULT_OPTS: CalcOptions = {
+  trimK: 0.005, tailK: 0.25, r2Min: 0.99, winFrac: 0.1, slopeFrac: 0.7,
+  algo: 'first', epsSec0: 0.0005, epsSec1: 0.0025,
+};
 
 /** Максимум массива циклом — спред Math.max(...xs) падает на >~100 тыс. точек */
 const amax = (xs: number[]): number => {
@@ -45,16 +48,17 @@ function findTrimIndex(n: number[], nTr: number): number {
   return n.length - 1;
 }
 
-/** ALG-2: линейный участок — первый непрерывно-линейный отрезок от начала кривой.
- *  Упругий участок всегда идёт от начала σ(ε) и является самым крутым.
- *  Для каждого старта i0 (в пределах toeMax — допуск на «нулевую зону»)
- *  окно расширяется, пока r2 >= r2Min и наклон >= slopeFrac·ref(i0);
- *  стоп — при серии из 3 провалов подряд (одиночный выброс не обрывает,
- *  истинный перегиб обрывает; сканировать дальше нельзя — R² после
- *  перегиба восстанавливается и длинное окно «перескочит» на плато).
- *  Возвращается САМЫЙ РАННИЙ i0, чей участок проходит глобальные ворота
- *  наклона slopeFrac·G (G — макс. начальный наклон): позднее плато
- *  идеально линейно, но пологое → отсекается, как и плоский toe-старт.
+/** ALG-2: выбор линейного участка σ(ε) для E_tan — три стратегии (opts.algo).
+ *  'first'    — первый непрерывно-линейный отрезок от начала кривой (основной).
+ *  'steepest' — самый крутой непрерывно-линейный отрезок до пика (toe-зоны).
+ *  'secant'   — хорда между заданными деформациями epsSec0..epsSec1 (ISO 527,
+ *               для J-образных кривых без выраженного линейного участка).
+ *  Общая механика 'first'/'steepest': окно растёт от старта i0, пока
+ *  r2 >= r2Min и наклон >= slopeFrac·ref(i0); стоп — при серии из 3
+ *  провалов подряд (выброс переживаем, перегиб ловим; сканировать за
+ *  провалом нельзя — R² длинного окна после перегиба восстанавливается).
+ *  'first' дополнительно требует slopeFrac·G (G — макс. начальный наклон):
+ *  позднее плато идеально линейно, но пологое → ворота отсекают.
  *  Fallback: тот же рост с ослабленным R², затем — минимальное окно. */
 function findLinearRegion(
   eps: number[],
@@ -91,21 +95,11 @@ function findLinearRegion(
     return ref;
   };
 
-  // G — модуль упругого участка: максимальный наклон в начальной зоне.
-  // Ворота slopeFrac·G отсекают поздние пологие участки (плато текучести
-  // идеально линейно, но его наклон далёк от упругого → не пройдёт).
-  let G = 0;
-  for (let i0 = 0; i0 <= toeMax && i0 + baseW - 1 <= end; i0++) {
-    const s = refSlope(i0);
-    if (s > G) G = s;
-  }
-  const gMin = G * opts.slopeFrac;
-
   // рост окна от i0: пока r2 и наклон в допуске; стоп при СЕРИИ провалов
-  // (одиночный выброс не обрывает участок, истинный перегиб — обрывает)
-  const grow = (i0: number, r2Need: number): number => {
-    const ref = refSlope(i0);
-    const minSlope = ref > 0 ? ref * opts.slopeFrac : 0;
+  // (одиночный выброс не обрывает участок, истинный перегиб — обрывает;
+  // сканировать дальше нельзя — R² длинного окна после перегиба
+  // восстанавливается и «перескочит» на следующий участок)
+  const grow = (i0: number, r2Need: number, minSlope: number): number => {
     let last = -1;
     let failRun = 0;
     for (let i1 = i0 + baseW - 1; i1 <= end; i1++) {
@@ -118,10 +112,63 @@ function findLinearRegion(
     return last;
   };
 
+  const degenerate = () => {
+    const i1 = Math.min(minW - 1, end);
+    return { i0: 0, i1, ...fit(0, i1) };
+  };
+  const r2Loose = Math.min(opts.r2Min - 0.02, 0.95);
+
+  // --- секущий модуль: хорда между заданными деформациями (ISO 527) ---
+  if (opts.algo === 'secant') {
+    const near = (e: number): number => {
+      let b = 0;
+      for (let i = 1; i <= end; i++) if (Math.abs(eps[i] - e) < Math.abs(eps[b] - e)) b = i;
+      return b;
+    };
+    let i0 = near(Math.min(opts.epsSec0, opts.epsSec1));
+    let i1 = near(Math.max(opts.epsSec0, opts.epsSec1));
+    if (i1 <= i0) {
+      i1 = Math.min(i0 + 1, end);
+      i0 = Math.max(i1 - 1, 0);
+    }
+    const f = fit(i0, i1);
+    const dE = eps[i1] - eps[i0];
+    const slope = dE !== 0 ? (sigma[i1] - sigma[i0]) / dE : f.slope;
+    return { i0, i1, slope, intercept: sigma[i0] - slope * eps[i0], r2: f.r2 };
+  }
+
+  // --- самый крутой участок: макс. наклон среди непрерывно-линейных окон ---
+  if (opts.algo === 'steepest') {
+    for (const r2Need of [opts.r2Min, r2Loose]) {
+      let best: { i0: number; i1: number; slope: number; intercept: number; r2: number } | null = null;
+      for (let i0 = 0; i0 + baseW - 1 <= end; i0++) {
+        const ref = refSlope(i0);
+        const last = grow(i0, r2Need, ref > 0 ? ref * opts.slopeFrac : 0);
+        if (last < i0 + baseW - 1) continue;
+        const f = fit(i0, last);
+        if (!best || f.slope > best.slope) best = { i0, i1: last, ...f };
+      }
+      if (best) return best;
+    }
+    return degenerate();
+  }
+
+  // --- 'first': первый линейный участок от начала кривой ---
+  // G — модуль упругого участка: максимальный наклон в начальной зоне.
+  // Ворота slopeFrac·G отсекают поздние пологие участки (плато текучести
+  // идеально линейно, но его наклон далёк от упругого → не пройдёт).
+  let G = 0;
+  for (let i0 = 0; i0 <= toeMax && i0 + baseW - 1 <= end; i0++) {
+    const s = refSlope(i0);
+    if (s > G) G = s;
+  }
+  const gMin = G * opts.slopeFrac;
+
   // самый ранний i0, чей участок непрерывно-линеен и имеет упругий наклон
   const pass = (r2Need: number) => {
     for (let i0 = 0; i0 <= toeMax && i0 + baseW - 1 <= end; i0++) {
-      const last = grow(i0, r2Need);
+      const ref = refSlope(i0);
+      const last = grow(i0, r2Need, ref > 0 ? ref * opts.slopeFrac : 0);
       if (last < i0 + baseW - 1) continue;
       const f = fit(i0, last);
       if (f.slope >= gMin) return { i0, i1: last, ...f };
@@ -130,11 +177,7 @@ function findLinearRegion(
   };
 
   // строгий проход → ослабленный R² → вырожденный fallback
-  return (
-    pass(opts.r2Min) ??
-    pass(Math.min(opts.r2Min - 0.02, 0.95)) ??
-    { i0: 0, i1: Math.min(minW - 1, end), ...fit(0, Math.min(minW - 1, end)) }
-  );
+  return pass(opts.r2Min) ?? pass(r2Loose) ?? degenerate();
 }
 
 /** МНК + R² по диапазону индексов [i0, i1] включительно */
