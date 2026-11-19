@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { CalcOptions } from '../core/types';
 import type { Figure } from '../core/figures';
 import { specimenFigures, overlayFigures } from '../core/figures';
@@ -19,6 +19,7 @@ export function PlotsSection({
   onManual,
   onManualTrim,
   opts,
+  showMid,
 }: {
   rows: Row[];
   excluded: Set<string>;
@@ -27,8 +28,8 @@ export function PlotsSection({
   onManual: (id: string, v: { eps0: number; eps1: number } | null) => void;
   onManualTrim: (id: string, v: { i0: number; i1: number } | null) => void;
   opts: CalcOptions;
+  showMid: boolean; // промежуточные графики (обрезанная сила, σ(ε))
 }) {
-  const [showMid, setShowMid] = useState(true); // промежуточные графики (обрезанная сила, σ(ε))
   const activeRows = useMemo(() => rows.filter((r) => !excluded.has(r.s.id)), [rows, excluded]);
   const overlays = useMemo<Figure[]>(() => overlayFigures(activeRows), [activeRows]);
   // фигуры мемоизированы по строкам — иначе Plotly перерисовывается на каждый mousemove разделителя
@@ -40,10 +41,6 @@ export function PlotsSection({
   return (
     <div className="plots-section">
       <div className="plots-toolbar">
-        <label className="mid-toggle" title="Показывать графики 2–3: N(Δl) после обрезки и σ(ε)">
-          <input type="checkbox" checked={showMid} onChange={(e) => setShowMid(e.target.checked)} />
-          промежуточные графики
-        </label>
         <div className="chips">
           {rows.map((r) => (
             <button
@@ -95,7 +92,7 @@ export function PlotsSection({
               </button>
             </h3>
             {!off && (
-              <div className="plot-grid">
+              <div className={`plot-grid ${showMid ? '' : 'plot-grid-two'}`}>
                 {figsById
                   .get(row.s.id)!
                   .filter((f) => showMid || f.name === 'raw_force' || f.name === 'modulus')

@@ -1,6 +1,6 @@
 import type { CalcOptions, CalcResult, Specimen } from './types';
 
-export const DEFAULT_OPTS: CalcOptions = { trimK: 0.005, tailK: 0.25, r2Min: 0.99, winFrac: 0.1 };
+export const DEFAULT_OPTS: CalcOptions = { trimK: 0.005, tailK: 0.25, r2Min: 0.99, winFrac: 0.1, slopeFrac: 0.7 };
 
 /** Максимум массива циклом — спред Math.max(...xs) падает на >~100 тыс. точек */
 const amax = (xs: number[]): number => {
@@ -45,11 +45,17 @@ function findTrimIndex(n: number[], nTr: number): number {
   return n.length - 1;
 }
 
-/** ALG-2: линейный участок — якорный рост от начала кривой.
+/** ALG-2: линейный участок — первый непрерывно-линейный отрезок от начала кривой.
  *  Упругий участок всегда идёт от начала σ(ε) и является самым крутым.
  *  Для каждого старта i0 (в пределах toeMax — допуск на «нулевую зону»)
- *  окно расширяется, пока r2 >= r2Min и наклон не упал ниже 70% начального;
- *  из допустимых берётся наиболее длинное. Fallback: max r2·len где угодно. */
+ *  окно расширяется, пока r2 >= r2Min и наклон >= slopeFrac·ref(i0);
+ *  стоп — при серии из 3 провалов подряд (одиночный выброс не обрывает,
+ *  истинный перегиб обрывает; сканировать дальше нельзя — R² после
+ *  перегиба восстанавливается и длинное окно «перескочит» на плато).
+ *  Возвращается САМЫЙ РАННИЙ i0, чей участок проходит глобальные ворота
+ *  наклона slopeFrac·G (G — макс. начальный наклон): позднее плато
+ *  идеально линейно, но пологое → отсекается, как и плоский toe-старт.
+ *  Fallback: тот же рост с ослабленным R², затем — минимальное окно. */
 function findLinearRegion(
   eps: number[],
   sigma: number[],
@@ -72,37 +78,63 @@ function findLinearRegion(
   }
   const minW = Math.min(Math.max(5, Math.ceil(opts.winFrac * m)), m);
   const toeMax = Math.min(Math.floor(m * 0.05), 10);
+  const baseW = Math.min(5, m);
+  const fit = (a: number, b: number) => windowFit(px, py, pxy, px2, py2, a, b);
 
-  let best = { i0: 0, i1: Math.min(minW - 1, end), slope: 0, intercept: 0, r2: -1 };
-  let bestLen = -1;
-
-  for (let i0 = 0; i0 <= toeMax && i0 + minW - 1 <= end; i0++) {
-    const ref = windowFit(px, py, pxy, px2, py2, i0, i0 + minW - 1);
-    const minSlope = ref.slope > 0 ? 0.7 * ref.slope : 0;
-    for (let i1 = i0 + minW - 1; i1 <= end; i1++) {
-      const f = windowFit(px, py, pxy, px2, py2, i0, i1);
-      if (f.r2 >= opts.r2Min && f.slope >= minSlope && i1 - i0 + 1 > bestLen) {
-        bestLen = i1 - i0 + 1;
-        best = { i0, i1, slope: f.slope, intercept: f.intercept, r2: f.r2 };
-      }
+  // локальный референсный наклон от i0 — самый крутой короткий отрезок
+  const refSlope = (i0: number): number => {
+    let ref = 0;
+    for (let k = baseW; k <= minW && i0 + k - 1 <= end; k++) {
+      const s = fit(i0, i0 + k - 1).slope;
+      if (s > ref) ref = s;
     }
-  }
-  if (bestLen >= minW) return best;
+    return ref;
+  };
 
-  // fallback: наиболее линейное и длинное окно где угодно до пика
-  let bestScore = -1;
-  for (let w = minW; w <= m; w++) {
-    for (let i0 = 0; i0 + w - 1 <= end; i0++) {
-      const i1 = i0 + w - 1;
-      const f = windowFit(px, py, pxy, px2, py2, i0, i1);
-      const score = f.r2 * w;
-      if (score > bestScore) {
-        bestScore = score;
-        best = { i0, i1, slope: f.slope, intercept: f.intercept, r2: f.r2 };
-      }
-    }
+  // G — модуль упругого участка: максимальный наклон в начальной зоне.
+  // Ворота slopeFrac·G отсекают поздние пологие участки (плато текучести
+  // идеально линейно, но его наклон далёк от упругого → не пройдёт).
+  let G = 0;
+  for (let i0 = 0; i0 <= toeMax && i0 + baseW - 1 <= end; i0++) {
+    const s = refSlope(i0);
+    if (s > G) G = s;
   }
-  return best;
+  const gMin = G * opts.slopeFrac;
+
+  // рост окна от i0: пока r2 и наклон в допуске; стоп при СЕРИИ провалов
+  // (одиночный выброс не обрывает участок, истинный перегиб — обрывает)
+  const grow = (i0: number, r2Need: number): number => {
+    const ref = refSlope(i0);
+    const minSlope = ref > 0 ? ref * opts.slopeFrac : 0;
+    let last = -1;
+    let failRun = 0;
+    for (let i1 = i0 + baseW - 1; i1 <= end; i1++) {
+      const f = fit(i0, i1);
+      if (f.r2 >= r2Need && f.slope >= minSlope) {
+        last = i1;
+        failRun = 0;
+      } else if (++failRun >= 3) break;
+    }
+    return last;
+  };
+
+  // самый ранний i0, чей участок непрерывно-линеен и имеет упругий наклон
+  const pass = (r2Need: number) => {
+    for (let i0 = 0; i0 <= toeMax && i0 + baseW - 1 <= end; i0++) {
+      const last = grow(i0, r2Need);
+      if (last < i0 + baseW - 1) continue;
+      const f = fit(i0, last);
+      if (f.slope >= gMin) return { i0, i1: last, ...f };
+    }
+    return null;
+  };
+
+  // строгий проход → ослабленный R² → вырожденный fallback
+  return (
+    pass(opts.r2Min) ??
+    pass(Math.min(opts.r2Min - 0.02, 0.95)) ??
+    { i0: 0, i1: Math.min(minW - 1, end), ...fit(0, Math.min(minW - 1, end)) }
+  );
 }
 
 /** МНК + R² по диапазону индексов [i0, i1] включительно */

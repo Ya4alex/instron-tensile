@@ -240,6 +240,28 @@ describe('матчасть — сверка на всех образцах', () 
     }
   });
 
+  it('ALG-2 берёт ПЕРВЫЙ линейный участок, а не длинное плато', () => {
+    // билинейная кривая: крутой упругий участок (E≈2000, ~10 точек),
+    // затем длинное пологое плато (E≈20, ~290 точек) — старый критерий
+    // «самое длинное линейное окно» ошибочно выбирал плато
+    const dl: number[] = [];
+    const n: number[] = [];
+    for (let i = 0; i <= 300; i++) {
+      const d = (i / 300) * 3; // Δl 0→3 мм, ε 0→0.03
+      dl.push(d);
+      n.push(d < 0.1 ? 200 * d : 20 + 2 * (d - 0.1));
+    }
+    const syn = {
+      id: 'syn', fileName: 'syn.csv', label: 'syn', index: null,
+      geometry: { l0: 100, b0: 10, hcp: 1 }, meta: {}, declaredMaxLoad: null,
+      series: { t: dl.map((_, i) => i * 0.01), dl, n },
+    };
+    const r = compute(syn, { ...DEFAULT_OPTS, tailK: 0.99 });
+    // участок заканчивается в районе перегиба (ε≈0.001), а не на плато (ε→0.03)
+    expect(r.eps[r.region.i1]).toBeLessThan(0.005);
+    expect(r.eTan).toBeGreaterThan(1000); // модуль упругого участка, не плато
+  });
+
   it('секущие = σ/ε в точках границ (с пропуском ε=0)', () => {
     for (const r of RESULTS) {
       const j1 = secIdx(r.eps, r.region.i0, 1);

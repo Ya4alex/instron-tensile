@@ -91,6 +91,7 @@ export async function buildXlsx(
       ws.addRow(['Порог обрезки хвоста (доля N_max)', opts.tailK]);
       ws.addRow(['Мин. R² линейного участка', opts.r2Min]);
       ws.addRow(['Мин. окно участка (доля точек)', opts.winFrac]);
+      ws.addRow(['Допустимый спад наклона участка', opts.slopeFrac]);
       ws.addRow(['Образцов в выгрузке', rows.length]);
     }
   }

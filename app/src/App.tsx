@@ -27,6 +27,7 @@ export default function App() {
   const [flashId, setFlashId] = useState<string | null>(null);
   const [ratio, setRatio] = useState(0.7);
   const [optsOpen, setOptsOpen] = useState(false);
+  const [showMid, setShowMid] = useState(true);
   const [busyZip, setBusyZip] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [sort, setSort] = useState<Sort>(null);
@@ -135,9 +136,12 @@ export default function App() {
       <input
         type="number"
         step={step}
+        min="0"
         value={opts[key]}
-        style={{ width: `${Math.max(6, String(opts[key]).length + 2)}ch` }}
-        onChange={(e) => setOpts((o) => ({ ...o, [key]: parseFloat(e.target.value) || o[key] }))}
+        onChange={(e) => {
+          const v = parseFloat(e.target.value.replace(',', '.'));
+          if (Number.isFinite(v)) setOpts((o) => ({ ...o, [key]: v }));
+        }}
       />
     </label>
   );
@@ -159,6 +163,10 @@ export default function App() {
             {errors.length > 0 && ` · ${errors.length} ош.`}
           </span>
           <DropZone compact onFiles={addFiles} />
+          <label className="mid-toggle" title="Показывать графики 2–3: N(Δl) после обрезки и σ(ε)">
+            <input type="checkbox" checked={showMid} onChange={(e) => setShowMid(e.target.checked)} />
+            промежуточные
+          </label>
           <button
             onClick={async () => {
               setBusyZip(true);
@@ -188,8 +196,9 @@ export default function App() {
                 <div className="opt-pop">
                 {optInput('trimK', '0.001', 'Порог начала')}
                 {optInput('tailK', '0.05', 'Порог хвоста')}
-                {optInput('r2Min', '0.001', 'R² участка')}
+                {optInput('r2Min', '0.005', 'R² участка')}
                 {optInput('winFrac', '0.01', 'Мин. окно')}
+                {optInput('slopeFrac', '0.05', 'Спад наклона')}
                 </div>
               </>
             )}
@@ -220,6 +229,7 @@ export default function App() {
               onManual={setManual}
               onManualTrim={setManualTrim}
               opts={opts}
+              showMid={showMid}
             />
           </div>
           <div className="divider" onMouseDown={startDrag} title="Потяните, чтобы изменить высоту панелей">
