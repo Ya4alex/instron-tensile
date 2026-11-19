@@ -45,7 +45,11 @@ function findTrimIndex(n: number[], nTr: number): number {
   return n.length - 1;
 }
 
-/** ALG-2: наиболее длинное окно с r2 >= r2Min в предпиковой области; иначе max r2·len */
+/** ALG-2: линейный участок — якорный рост от начала кривой.
+ *  Упругий участок всегда идёт от начала σ(ε) и является самым крутым.
+ *  Для каждого старта i0 (в пределах toeMax — допуск на «нулевую зону»)
+ *  окно расширяется, пока r2 >= r2Min и наклон не упал ниже 70% начального;
+ *  из допустимых берётся наиболее длинное. Fallback: max r2·len где угодно. */
 function findLinearRegion(
   eps: number[],
   sigma: number[],
@@ -67,19 +71,32 @@ function findLinearRegion(
     py2[i + 1] = py2[i] + sigma[i] * sigma[i];
   }
   const minW = Math.min(Math.max(5, Math.ceil(opts.winFrac * m)), m);
+  const toeMax = Math.min(Math.floor(m * 0.05), 10);
+
   let best = { i0: 0, i1: Math.min(minW - 1, end), slope: 0, intercept: 0, r2: -1 };
-  let bestLen = -1,
-    bestScore = -1;
+  let bestLen = -1;
+
+  for (let i0 = 0; i0 <= toeMax && i0 + minW - 1 <= end; i0++) {
+    const ref = windowFit(px, py, pxy, px2, py2, i0, i0 + minW - 1);
+    const minSlope = ref.slope > 0 ? 0.7 * ref.slope : 0;
+    for (let i1 = i0 + minW - 1; i1 <= end; i1++) {
+      const f = windowFit(px, py, pxy, px2, py2, i0, i1);
+      if (f.r2 >= opts.r2Min && f.slope >= minSlope && i1 - i0 + 1 > bestLen) {
+        bestLen = i1 - i0 + 1;
+        best = { i0, i1, slope: f.slope, intercept: f.intercept, r2: f.r2 };
+      }
+    }
+  }
+  if (bestLen >= minW) return best;
+
+  // fallback: наиболее линейное и длинное окно где угодно до пика
+  let bestScore = -1;
   for (let w = minW; w <= m; w++) {
     for (let i0 = 0; i0 + w - 1 <= end; i0++) {
       const i1 = i0 + w - 1;
       const f = windowFit(px, py, pxy, px2, py2, i0, i1);
-      if (f.r2 >= opts.r2Min && w > bestLen) {
-        bestLen = w;
-        best = { i0, i1, slope: f.slope, intercept: f.intercept, r2: f.r2 };
-      }
       const score = f.r2 * w;
-      if (bestLen < 0 && score > bestScore) {
+      if (score > bestScore) {
         bestScore = score;
         best = { i0, i1, slope: f.slope, intercept: f.intercept, r2: f.r2 };
       }

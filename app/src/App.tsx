@@ -136,6 +136,7 @@ export default function App() {
         type="number"
         step={step}
         value={opts[key]}
+        style={{ width: `${Math.max(6, String(opts[key]).length + 2)}ch` }}
         onChange={(e) => setOpts((o) => ({ ...o, [key]: parseFloat(e.target.value) || o[key] }))}
       />
     </label>
@@ -185,10 +186,10 @@ export default function App() {
               <>
                 <div className="pop-overlay" onClick={() => setOptsOpen(false)} />
                 <div className="opt-pop">
-                {optInput('trimK', '0.005', 'Порог начала')}
-                {optInput('tailK', '0.01', 'Порог хвоста')}
-                {optInput('r2Min', '0.005', 'R² участка')}
-                {optInput('winFrac', '0.05', 'Мин. окно')}
+                {optInput('trimK', '0.001', 'Порог начала')}
+                {optInput('tailK', '0.05', 'Порог хвоста')}
+                {optInput('r2Min', '0.001', 'R² участка')}
+                {optInput('winFrac', '0.01', 'Мин. окно')}
                 </div>
               </>
             )}

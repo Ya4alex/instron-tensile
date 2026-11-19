@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { CalcOptions } from '../core/types';
 import type { Figure } from '../core/figures';
 import { specimenFigures, overlayFigures } from '../core/figures';
@@ -28,6 +28,7 @@ export function PlotsSection({
   onManualTrim: (id: string, v: { i0: number; i1: number } | null) => void;
   opts: CalcOptions;
 }) {
+  const [showMid, setShowMid] = useState(true); // промежуточные графики (обрезанная сила, σ(ε))
   const activeRows = useMemo(() => rows.filter((r) => !excluded.has(r.s.id)), [rows, excluded]);
   const overlays = useMemo<Figure[]>(() => overlayFigures(activeRows), [activeRows]);
   // фигуры мемоизированы по строкам — иначе Plotly перерисовывается на каждый mousemove разделителя
@@ -39,6 +40,10 @@ export function PlotsSection({
   return (
     <div className="plots-section">
       <div className="plots-toolbar">
+        <label className="mid-toggle" title="Показывать графики 2–3: N(Δl) после обрезки и σ(ε)">
+          <input type="checkbox" checked={showMid} onChange={(e) => setShowMid(e.target.checked)} />
+          промежуточные графики
+        </label>
         <div className="chips">
           {rows.map((r) => (
             <button
@@ -91,13 +96,16 @@ export function PlotsSection({
             </h3>
             {!off && (
               <div className="plot-grid">
-                {figsById.get(row.s.id)!.map((f, i) => (
+                {figsById
+                  .get(row.s.id)!
+                  .filter((f) => showMid || f.name === 'raw_force' || f.name === 'modulus')
+                  .map((f) => (
                   <PlotCard
                     key={f.name}
                     figure={f}
-                    editLabel={i === 0 ? '✎ обрезка' : '✎ участок'}
+                    editLabel={f.name === 'raw_force' ? '✎ обрезка' : '✎ участок'}
                     editor={
-                      i === 0
+                      f.name === 'raw_force'
                         ? (done) => (
                             <TrimEditorPanel
                               figure={f}
@@ -108,7 +116,7 @@ export function PlotsSection({
                               onDone={done}
                             />
                           )
-                        : i === 3
+                        : f.name === 'modulus'
                           ? (done) => (
                               <RegionEditorPanel
                                 figure={f}

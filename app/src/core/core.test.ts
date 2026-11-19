@@ -229,12 +229,14 @@ describe('матчасть — сверка на всех образцах', () 
     }
   });
 
-  it('участок в предпиковой области', () => {
+  it('участок в предпиковой области и якорится у начала кривой', () => {
     for (const r of RESULTS) {
       const iPeak = r.sigma.indexOf(Math.max(...r.sigma));
       expect(r.region.i0).toBeGreaterThanOrEqual(0);
       expect(r.region.i0).toBeLessThan(r.region.i1);
       expect(r.region.i1).toBeLessThanOrEqual(iPeak);
+      // ALG-2 ищет упругий участок от начала σ(ε), допуск toe — первые ~5% точек
+      expect(r.region.i0).toBeLessThanOrEqual(Math.max(10, Math.floor(iPeak * 0.1)));
     }
   });
 
